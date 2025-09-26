@@ -283,8 +283,13 @@
 
         // --- WebSocket Connection Logic ---
         function connectWebSocket() {
-            // Replace with your server's address if not running locally
-            socket = new WebSocket('wss://vit-platoon.onrender.com');
+            // Use the correct WebSocket URL for your Render deployment
+            const wsUrl = window.location.protocol === 'https:' 
+                ? `wss://${window.location.host}`
+                : `ws://${window.location.host}`;
+            
+            console.log('[Client] Connecting to:', wsUrl);
+            socket = new WebSocket(wsUrl);
 
             socket.onopen = () => {
                 console.log('[Client] WebSocket connection established.');
@@ -297,15 +302,41 @@
             };
 
             socket.onmessage = (event) => {
-                const newDataRow = JSON.parse(event.data);
-                console.log('[Client] Received data:', newDataRow);
-                allData.push(newDataRow);
-                updateDashboard(newDataRow);
+                try {
+                    const newDataRow = JSON.parse(event.data);
+                    console.log('[Client] Received data:', newDataRow);
+                    
+                    // Skip welcome messages
+                    if (newDataRow.type === 'welcome') {
+                        console.log('[Client] Welcome message received');
+                        return;
+                    }
+                    
+                    // Only process vehicle data
+                    if (newDataRow.vehicle_id) {
+                        allData.push(newDataRow);
+                        updateDashboard(newDataRow);
+                        
+                        // Keep only the last 500 data points to prevent memory issues
+                        if (allData.length > 500) {
+                            allData = allData.slice(-500);
+                        }
+                    }
+                } catch (error) {
+                    console.error('[Client] Error parsing message:', error);
+                }
             };
 
             socket.onclose = () => {
                 console.log('[Client] WebSocket connection closed.');
                 updateConnectionStatus('Disconnected', 'bg-red-500', false);
+                // Try to reconnect after 5 seconds
+                setTimeout(() => {
+                    if (dashboardApp && !dashboardApp.classList.contains('hidden')) {
+                        console.log('[Client] Attempting to reconnect...');
+                        connectWebSocket();
+                    }
+                }, 5000);
             };
 
             socket.onerror = (error) => {
@@ -323,12 +354,12 @@
 
         // --- Real-time Dashboard Updates ---
         function updateDashboard(newDataRow) {
-            // Find column keys dynamically from the first data row
+            // Use the exact column names from the server
             const colMap = {
-                speed: Object.keys(newDataRow).find(k => k.toLowerCase().includes('speed')),
-                fuel: Object.keys(newDataRow).find(k => k.toLowerCase().includes('fuel')),
-                platoon: Object.keys(newDataRow).find(k => k.toLowerCase().includes('platoon')),
-                co2: Object.keys(newDataRow).find(k => k.toLowerCase().includes('co2')),
+                speed: 'speed',
+                fuel: 'fuel_consumption',
+                platoon: 'platooning_status',
+                co2: 'co2_emission',
             };
             
             updateKPIs(allData, colMap);
@@ -337,57 +368,75 @@
         }
 
         function updateKPIs(data, colMap) {
+            if (data.length === 0) return;
+            
             const totalRecords = data.length;
-            document.getElementById('avgSpeed').textContent = `${(data.reduce((s, r) => s + (parseFloat(r[colMap.speed]) || 0), 0) / totalRecords).toFixed(1)} km/h`;
-            document.getElementById('avgFuel').textContent = `${(data.reduce((s, r) => s + (parseFloat(r[colMap.fuel]) || 0), 0) / totalRecords).toFixed(2)} L/100km`;
-            const platoonCount = data.filter(r => String(r[colMap.platoon]).toLowerCase() === 'on' || r[colMap.platoon] === 1).length;
+            const avgSpeed = data.reduce((s, r) => s + (parseFloat(r[colMap.speed]) || 0), 0) / totalRecords;
+            const avgFuel = data.reduce((s, r) => s + (parseFloat(r[colMap.fuel]) || 0), 0) / totalRecords;
+            const platoonCount = data.filter(r => r[colMap.platoon] === 'on' || r[colMap.platoon] === true).length;
+            
+            document.getElementById('avgSpeed').textContent = `${avgSpeed.toFixed(1)} km/h`;
+            document.getElementById('avgFuel').textContent = `${avgFuel.toFixed(2)} L/100km`;
             document.getElementById('platoonRatio').textContent = `${((platoonCount / totalRecords) * 100).toFixed(0)}%`;
         }
 
         function updateCharts(newDataRow, colMap) {
-            // Add new label (e.g., timestamp or count)
-            const newLabel = allData.length;
+            if (!charts.speedFuelChart) return;
+            
+            // Add new label (use timestamp or data count)
+            const newLabel = new Date(newDataRow.timestamp || Date.now()).toLocaleTimeString();
             charts.speedFuelChart.data.labels.push(newLabel);
             
             // Add new data points
-            charts.speedFuelChart.data.datasets[0].data.push(newDataRow[colMap.speed]);
-            charts.speedFuelChart.data.datasets[1].data.push(newDataRow[colMap.fuel]);
+            charts.speedFuelChart.data.datasets[0].data.push(parseFloat(newDataRow[colMap.speed]) || 0);
+            charts.speedFuelChart.data.datasets[1].data.push(parseFloat(newDataRow[colMap.fuel]) || 0);
 
             // Keep the chart from getting too crowded
             if(charts.speedFuelChart.data.labels.length > 50) {
                 charts.speedFuelChart.data.labels.shift();
                 charts.speedFuelChart.data.datasets.forEach(dataset => dataset.data.shift());
             }
-            charts.speedFuelChart.update();
+            charts.speedFuelChart.update('none'); // No animation for better performance
 
             // Update Doughnut Chart
-            const platoonOn = allData.filter(r => String(r[colMap.platoon]).toLowerCase() === 'on' || r[colMap.platoon] === 1).length;
+            const platoonOn = allData.filter(r => r[colMap.platoon] === 'on' || r[colMap.platoon] === true).length;
             charts.platooningChart.data.datasets[0].data = [platoonOn, allData.length - platoonOn];
-            charts.platooningChart.update();
+            charts.platooningChart.update('none');
 
             // Update Scatter chart
-            if(charts.co2SpeedChart && colMap.co2 && colMap.speed) {
-                charts.co2SpeedChart.data.datasets[0].data.push({ x: newDataRow[colMap.speed], y: newDataRow[colMap.co2] });
+            if(charts.co2SpeedChart && newDataRow[colMap.co2] && newDataRow[colMap.speed]) {
+                charts.co2SpeedChart.data.datasets[0].data.push({ 
+                    x: parseFloat(newDataRow[colMap.speed]) || 0, 
+                    y: parseFloat(newDataRow[colMap.co2]) || 0 
+                });
                 if(charts.co2SpeedChart.data.datasets[0].data.length > 200) {
                      charts.co2SpeedChart.data.datasets[0].data.shift();
                 }
-                charts.co2SpeedChart.update();
+                charts.co2SpeedChart.update('none');
             }
         }
         
         function updateTable(newDataRow) {
             const tableBody = document.getElementById('tableBody');
+            if (!tableBody) return;
+            
             const newRow = document.createElement('tr');
             newRow.className = 'border-b border-slate-800 hover:bg-slate-700/50';
+            
+            // Create table row with the expected columns
+            const columns = ['vehicle_id', 'speed', 'fuel_consumption', 'platooning_status', 'co2_emission'];
             let rowHTML = '';
-            // Use the headers from the table to determine order
-            document.querySelectorAll('#tableHeader th').forEach(th => {
-                const key = th.dataset.key;
-                rowHTML += `<td class="p-3 whitespace-nowrap text-slate-400">${newDataRow[key] ?? 'N/A'}</td>`;
+            columns.forEach(col => {
+                let value = newDataRow[col];
+                if (typeof value === 'number') {
+                    value = value.toFixed(2);
+                }
+                rowHTML += `<td class="p-3 whitespace-nowrap text-slate-400">${value || 'N/A'}</td>`;
             });
+            
             newRow.innerHTML = rowHTML;
-            // Add the new row to the top of the table
             tableBody.prepend(newRow);
+            
             // Keep the table from getting too long
             if(tableBody.rows.length > 100) {
                 tableBody.deleteRow(-1);
@@ -396,19 +445,96 @@
 
         // --- Initial Dashboard Setup ---
         function initializeCharts() {
-            const sharedOptions = { responsive: true, maintainAspectRatio: false, animation: { duration: 500 }, plugins: { legend: { labels: { color: '#e2e8f0' } } } };
-            charts.speedFuelChart = new Chart(document.getElementById('speedFuelChart'), { type: 'line', data: { labels: [], datasets: [ { label: 'Speed (km/h)', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.2)', yAxisID: 'y', tension: 0.4, fill: true }, { label: 'Fuel (L/100km)', data: [], borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.2)', yAxisID: 'y1', tension: 0.4 } ] }, options: { ...sharedOptions, scales: { y: { beginAtZero: true, position: 'left', title: { display: true, text: 'Speed' } }, y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Fuel' }, grid: { drawOnChartArea: false } } } } });
-            charts.platooningChart = new Chart(document.getElementById('platooningChart'), { type: 'doughnut', data: { labels: ['Active', 'Inactive'], datasets: [{ data: [0, 0], backgroundColor: ['#f59e0b', '#475569'], borderColor: '#0f172a', hoverOffset: 8 }] }, options: sharedOptions });
-            if (document.getElementById('co2SpeedChart')) {
-                charts.co2SpeedChart = new Chart(document.getElementById('co2SpeedChart'), { type: 'scatter', data: { datasets: [{ label: 'CO2 Emission (g/km)', data: [], backgroundColor: 'rgba(244, 63, 94, 0.7)' }] }, options: { ...sharedOptions, scales: { x: { type: 'linear', position: 'bottom', title: { display: true, text: 'Speed (km/h)' } }, y: { title: { display: true, text: 'CO2 Emissions (g/km)' } } } } });
+            const sharedOptions = { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                animation: { duration: 0 }, // Disable animation for better performance
+                plugins: { legend: { labels: { color: '#e2e8f0' } } } 
+            };
+            
+            // Speed and Fuel Chart
+            const ctx1 = document.getElementById('speedFuelChart');
+            if (ctx1) {
+                charts.speedFuelChart = new Chart(ctx1, { 
+                    type: 'line', 
+                    data: { 
+                        labels: [], 
+                        datasets: [ 
+                            { 
+                                label: 'Speed (km/h)', 
+                                data: [], 
+                                borderColor: '#38bdf8', 
+                                backgroundColor: 'rgba(56, 189, 248, 0.2)', 
+                                yAxisID: 'y', 
+                                tension: 0.4, 
+                                fill: true 
+                            }, 
+                            { 
+                                label: 'Fuel (L/100km)', 
+                                data: [], 
+                                borderColor: '#34d399', 
+                                backgroundColor: 'rgba(52, 211, 153, 0.2)', 
+                                yAxisID: 'y1', 
+                                tension: 0.4 
+                            } 
+                        ] 
+                    }, 
+                    options: { 
+                        ...sharedOptions, 
+                        scales: { 
+                            y: { beginAtZero: true, position: 'left', title: { display: true, text: 'Speed' } }, 
+                            y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Fuel' }, grid: { drawOnChartArea: false } } 
+                        } 
+                    } 
+                });
             }
             
-            // Set up table header from a sample row (or predefined)
-            // This part is tricky without knowing the columns beforehand.
-            // We'll assume a structure and populate header on first message.
+            // Platooning Chart
+            const ctx2 = document.getElementById('platooningChart');
+            if (ctx2) {
+                charts.platooningChart = new Chart(ctx2, { 
+                    type: 'doughnut', 
+                    data: { 
+                        labels: ['Active', 'Inactive'], 
+                        datasets: [{ 
+                            data: [0, 0], 
+                            backgroundColor: ['#f59e0b', '#475569'], 
+                            borderColor: '#0f172a', 
+                            hoverOffset: 8 
+                        }] 
+                    }, 
+                    options: sharedOptions 
+                });
+            }
+            
+            // CO2 vs Speed Chart
+            const ctx3 = document.getElementById('co2SpeedChart');
+            if (ctx3) {
+                charts.co2SpeedChart = new Chart(ctx3, { 
+                    type: 'scatter', 
+                    data: { 
+                        datasets: [{ 
+                            label: 'CO2 Emission (g/km)', 
+                            data: [], 
+                            backgroundColor: 'rgba(244, 63, 94, 0.7)' 
+                        }] 
+                    }, 
+                    options: { 
+                        ...sharedOptions, 
+                        scales: { 
+                            x: { type: 'linear', position: 'bottom', title: { display: true, text: 'Speed (km/h)' } }, 
+                            y: { title: { display: true, text: 'CO2 Emissions (g/km)' } } 
+                        } 
+                    } 
+                });
+            }
+            
+            // Set up table header
             const headers = ['vehicle_id', 'speed', 'fuel_consumption', 'platooning_status', 'co2_emission'];
             const tableHeader = document.getElementById('tableHeader');
-            tableHeader.innerHTML = `<tr>${headers.map(h => `<th data-key="${h}" class="p-3 text-left font-semibold text-slate-300 uppercase tracking-wider">${h.replace(/_/g, ' ')}</th>`).join('')}</tr>`;
+            if (tableHeader) {
+                tableHeader.innerHTML = `<tr>${headers.map(h => `<th data-key="${h}" class="p-3 text-left font-semibold text-slate-300 uppercase tracking-wider">${h.replace(/_/g, ' ')}</th>`).join('')}</tr>`;
+            }
         }
 
         function createDashboardContent() {
