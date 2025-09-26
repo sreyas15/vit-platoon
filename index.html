@@ -165,10 +165,16 @@
         socket.onmessage = (event) => {
             try {
                 const newData = JSON.parse(event.data);
-                if (typeof newData === 'object' && newData !== null && newData.vehicle_id) {
-                    vehicleData.set(newData.vehicle_id, newData); // Store/update data for this vehicle
-                    updateDashboard();
-                }
+                // Handle both single vehicle object and array of vehicles
+                const vehicles = Array.isArray(newData.vehicles) ? newData.vehicles : [newData];
+                
+                vehicles.forEach(vehicle => {
+                    if (typeof vehicle === 'object' && vehicle !== null && vehicle.vehicle_id) {
+                        vehicleData.set(vehicle.vehicle_id, vehicle); // Store/update data for this vehicle
+                    }
+                });
+                updateDashboard();
+
             } catch (error) {
                 console.error('[Client] Error parsing data:', error);
             }
