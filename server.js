@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
+const fs = require('fs'); // Corrected import
+const path = require('path'); // Corrected import
 
 // --- Configuration ---
 const port = process.env.PORT || 8080;
@@ -84,7 +84,6 @@ const server = http.createServer((req, res) => {
 // Attach the WebSocket server to the HTTP server
 const wss = new WebSocket.Server({ server });
 
-// *** BUG FIX: Merged the two wss.on('connection') blocks into one ***
 wss.on('connection', ws => {
     console.log(`[Server] New WebSocket connection. Total clients: ${wss.clients.size}`);
 
