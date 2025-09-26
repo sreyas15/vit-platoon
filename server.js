@@ -122,6 +122,9 @@ const server = http.createServer((req, res) => {
 // Attach the WebSocket server to the HTTP server
 const wss = new WebSocket.Server({ server });
 
+// Add a simple heartbeat to send test data if no real data comes in
+let testDataInterval = null;
+
 wss.on('connection', ws => {
     console.log(`[Server] Dashboard client connected. Total clients: ${wss.clients.size}`);
     
@@ -133,8 +136,42 @@ wss.on('connection', ws => {
         server_status: 'ready'
     }));
     
+    // Start sending test data every 10 seconds if no real data is received
+    if (!testDataInterval && wss.clients.size === 1) {
+        console.log('[Server] Starting test data heartbeat...');
+        testDataInterval = setInterval(() => {
+            const testData = {
+                timestamp: new Date().toISOString(),
+                vehicle_id: `test_${Math.floor(Math.random() * 100)}`,
+                speed: 45 + Math.random() * 30,
+                fuel_consumption: 6 + Math.random() * 4,
+                co2_emission: 150 + Math.random() * 100,
+                platooning_status: Math.random() > 0.5 ? 'on' : 'off',
+                platoon_size: Math.floor(Math.random() * 5) + 1,
+                acceleration: (Math.random() - 0.5) * 2,
+                distance_to_leader: Math.random() * 20,
+                efficiency_score: 50 + Math.random() * 50,
+                current_lane: Math.floor(Math.random() * 3) + 1
+            };
+            
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify(testData));
+                }
+            });
+            console.log('[Server] Sent test data to clients');
+        }, 3000); // Every 3 seconds
+    }
+    
     ws.on('close', () => {
         console.log(`[Server] Dashboard client disconnected. Remaining clients: ${wss.clients.size - 1}`);
+        
+        // Stop test data if no clients connected
+        if (wss.clients.size === 0 && testDataInterval) {
+            clearInterval(testDataInterval);
+            testDataInterval = null;
+            console.log('[Server] Stopped test data heartbeat');
+        }
     });
     
     ws.on('error', (error) => {
@@ -146,5 +183,6 @@ server.listen(port, () => {
     console.log(`[Server] HTTP and WebSocket server started on port ${port}`);
     console.log(`[Server] WebSocket URL: ws://localhost:${port} (or wss:// for production)`);
     console.log(`[Server] Waiting for CARLA data at POST /data`);
+    console.log(`[Server] Dashboard URL: ${port === 8080 ? 'http://localhost:8080' : 'https://your-app-url.onrender.com'}`);
 });
 
