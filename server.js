@@ -29,45 +29,54 @@ const server = http.createServer((req, res) => {
         req.on('end', () => {
             try {
                 const receivedData = JSON.parse(body);
-                console.log('[Server] Received data from simulation:', receivedData);
+                console.log('[Server] Raw received data:', JSON.stringify(receivedData, null, 2));
                 
                 // Extract vehicles array and create individual messages
                 if (receivedData.vehicles && Array.isArray(receivedData.vehicles)) {
-                    receivedData.vehicles.forEach(vehicle => {
+                    console.log(`[Server] Processing ${receivedData.vehicles.length} vehicles`);
+                    
+                    let sentMessages = 0;
+                    receivedData.vehicles.forEach((vehicle, index) => {
                         const message = {
                             timestamp: receivedData.timestamp,
                             vehicle_id: vehicle.vehicle_id,
-                            speed: vehicle.speed,
-                            fuel_consumption: vehicle.fuel_consumption,
-                            co2_emission: vehicle.co2_emission,
+                            speed: parseFloat(vehicle.speed) || 0,
+                            fuel_consumption: parseFloat(vehicle.fuel_consumption) || 0,
+                            co2_emission: parseFloat(vehicle.co2_emission) || 0,
                             platooning_status: vehicle.platooning_status ? 'on' : 'off',
-                            platoon_size: vehicle.platoon_size,
-                            acceleration: vehicle.acceleration,
-                            distance_to_leader: vehicle.distance_to_leader,
-                            efficiency_score: vehicle.efficiency_score,
-                            current_lane: vehicle.current_lane
+                            platoon_size: parseInt(vehicle.platoon_size) || 1,
+                            acceleration: parseFloat(vehicle.acceleration) || 0,
+                            distance_to_leader: parseFloat(vehicle.distance_to_leader) || 0,
+                            efficiency_score: parseFloat(vehicle.efficiency_score) || 0,
+                            current_lane: parseInt(vehicle.current_lane) || 0
                         };
+                        
+                        console.log(`[Server] Vehicle ${index + 1} processed:`, JSON.stringify(message, null, 2));
                         
                         // Broadcast each vehicle's data to all connected dashboard clients
                         wss.clients.forEach(client => {
                             if (client.readyState === WebSocket.OPEN) {
                                 client.send(JSON.stringify(message));
+                                sentMessages++;
                             }
                         });
                     });
                     
-                    console.log(`[Server] Broadcasted data for ${receivedData.vehicles.length} vehicles`);
+                    console.log(`[Server] Sent ${sentMessages} messages to ${wss.clients.size} connected clients`);
                 } else {
-                    console.log('[Server] No vehicles data found in payload');
+                    console.log('[Server] Invalid data format - no vehicles array found');
+                    console.log('[Server] Received keys:', Object.keys(receivedData));
                 }
                 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ 
                     status: 'success', 
-                    received_vehicles: receivedData.vehicles ? receivedData.vehicles.length : 0 
+                    received_vehicles: receivedData.vehicles ? receivedData.vehicles.length : 0,
+                    connected_clients: wss.clients.size
                 }));
             } catch (e) {
-                console.error("Error parsing incoming data:", e);
+                console.error("[Server] Error parsing incoming data:", e);
+                console.error("[Server] Raw body was:", body);
                 res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ status: 'error', message: 'Invalid JSON' }));
             }
@@ -114,17 +123,18 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocket.Server({ server });
 
 wss.on('connection', ws => {
-    console.log('[Server] A dashboard client has connected.');
+    console.log(`[Server] Dashboard client connected. Total clients: ${wss.clients.size}`);
     
     // Send a welcome message to test the connection
     ws.send(JSON.stringify({
         type: 'welcome',
         message: 'Connected to Vehicle Platooning Server',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        server_status: 'ready'
     }));
     
     ws.on('close', () => {
-        console.log('[Server] A dashboard client has disconnected.');
+        console.log(`[Server] Dashboard client disconnected. Remaining clients: ${wss.clients.size - 1}`);
     });
     
     ws.on('error', (error) => {
@@ -135,5 +145,6 @@ wss.on('connection', ws => {
 server.listen(port, () => {
     console.log(`[Server] HTTP and WebSocket server started on port ${port}`);
     console.log(`[Server] WebSocket URL: ws://localhost:${port} (or wss:// for production)`);
+    console.log(`[Server] Waiting for CARLA data at POST /data`);
 });
 
