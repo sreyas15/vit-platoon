@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Vehicle Platooning Dashboard</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Papa Parse (not needed for file parsing, but keep for dashboard logic if necessary) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@400;500&family=Titillium+Web:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom styles for the F1 theme */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #000000;
+            color: #e2e8f0;
+            overflow-x: hidden;
+        }
+
+        #heroSection {
+            position: relative;
+            overflow: hidden;
+            height: calc(100vh - 80px); /* Adjust based on header height */
+        }
+
+        .hero-overlay {
+            background-color: rgba(0, 0, 0, 0.6);
+        }
+
+        .hero-title {
+            font-family: 'Orbitron', sans-serif;
+            animation: flicker 3s infinite alternate;
+        }
+
+        @keyframes flicker {
+            0%, 18%, 22%, 25%, 53%, 57%, 100% {
+                text-shadow:
+                    0 0 4px #fff,
+                    0 0 11px #fff,
+                    0 0 19px #fff,
+                    0 0 40px #f00,
+                    0 0 80px #f00,
+                    0 0 90px #f00,
+                    0 0 100px #f00,
+                    0 0 150px #f00;
+            }
+            20%, 24%, 55% { text-shadow: none; }
+        }
+
+        /* Glassmorphism card effect */
+        .glass-card {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+            transition: all 0.3s ease;
+        }
+        .glass-card:hover {
+            border-color: rgba(239, 68, 68, 0.5); /* Red 500 */
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.15);
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0a0f1f; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+        /* General animation for section entry */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .animate-fade-in-up { animation: fadeInUp 0.6s ease-out forwards; }
+
+        /* Status indicator pulse */
+        @keyframes pulse-live {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .pulse-live { animation: pulse-live 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        
+        /* Technology Stack Styles */
+        .tech-logo-container {
+            transition: transform 0.3s ease, filter 0.3s ease;
+            cursor: pointer;
+        }
+        .tech-logo-container:hover {
+            transform: scale(1.1);
+            filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.7));
+        }
+        .tech-logo-container.active {
+            transform: scale(1.1);
+            filter: drop-shadow(0 0 15px #ef4444);
+        }
+        .tech-desc {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s ease-out, opacity 0.5s ease-out, padding 0.5s ease-out;
+            opacity: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+        .tech-desc.visible {
+            max-height: 500px; /* Adjust as needed */
+            opacity: 1;
+            padding-top: 1.5rem;
+            padding-bottom: 1.5rem;
+        }
+
+        /* New advanced styles */
+        .vehicle-card {
+            transition: transform 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .vehicle-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .platoon-connection {
+            stroke-dasharray: 5,5;
+            animation: flowLine 1s linear infinite;
+        }
+        
+        @keyframes flowLine {
+            to {
+                stroke-dashoffset: -10;
+            }
+        }
+        
+        .efficiency-meter {
+            transition: width 0.5s ease;
+        }
+        
+        .platoon-visualization {
+            position: relative;
+            height: 200px;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        
+        .vehicle-dot {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            transition: all 0.5s ease;
+        }
+        
+        .metric-card {
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .advanced-chart-container {
+            position: relative;
+            transition: transform 0.3s ease;
+        }
+        
+        .advanced-chart-container:hover {
+            transform: scale(1.02);
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Click to start overlay -->
+    <div id="startOverlay" class="fixed inset-0 z-50 bg-black flex flex-col justify-center items-center text-center p-4 cursor-pointer transition-opacity duration-500">
+        <h1 class="text-4xl font-bold text-white mb-4" style="font-family: 'Orbitron', sans-serif;">Welcome</h1>
+        <p class="text-xl text-slate-300 animate-pulse">Click anywhere to begin the experience</p>
+    </div>
+
+    <!-- Audio Player -->
+    <audio id="backgroundAudio" loop preload="auto">
+        <source src="./f1_car_sound.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- Persistent Header -->
+    <header class="sticky top-0 z-30 w-full py-4 px-4 sm:px-6 lg:px-8 bg-black/50 backdrop-blur-sm opacity-0 transition-opacity duration-1000">
+        <div class="max-w-7xl mx-auto flex items-center justify-center relative">
+            <h2 id="homeBtn" class="text-2xl font-bold text-white cursor-pointer" style="font-family: 'Orbitron', sans-serif;">graVITas'25</h2>
+            <div id="connectionStatus" class="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-2 text-sm hidden">
+                <span id="statusIndicator" class="w-3 h-3 rounded-full bg-gray-500"></span>
+                <span id="statusText" class="text-slate-300"></span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="relative z-10">
+        
+        <!-- New Hero Section -->
+        <section id="heroSection" class="flex items-start justify-center text-center opacity-0 transition-opacity duration-1000 pt-24">
+             <!-- Background Video -->
+            <video autoplay loop muted playsinline class="absolute z-0 top-1/2 left-1/2 w-auto min-w-full min-h-full max-w-none -translate-x-1/2 -translate-y-1/2">
+                <source src="./intro_video.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+            <div class="hero-overlay absolute inset-0 z-10"></div>
+            <div class="relative z-20 p-4">
+                <p class="text-slate-300 text-lg md:text-xl" style="font-family: 'Titillium Web', sans-serif;">TEAM Seriously_IDK presents</p>
+                <h1 class="hero-title text-4xl md:text-7xl font-bold text-white my-4">
+                    VEHICLE PLATOONING
+                </h1>
+                <p class="max-w-3xl mx-auto text-slate-200 md:text-lg">
+                    RL based-Autonomous Vehicle Platooning with Fuel Reduction in CARLA
+                </p>
+                <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mt-10">
+                    <button id="dashboardBtn" class="bg-red-600/80 hover:bg-red-600 text-white font-bold py-3 px-8 rounded-lg text-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-red-400/50 w-full sm:w-auto">
+                        Live Dashboard
+                    </button>
+                    <button id="techStackBtn" class="bg-slate-700/80 hover:bg-slate-700 text-white font-bold py-3 px-8 rounded-lg text-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-slate-500/50 w-full sm:w-auto">
+                        Technology Stack
+                    </button>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Enhanced Dashboard Content -->
+        <div id="dashboardApp" class="hidden max-w-7xl mx-auto p-4">
+            <!-- Real-time Status Bar -->
+            <div class="flex items-center justify-between mb-6 p-4 glass-card">
+                <div class="flex items-center space-x-4">
+                    <div id="simulationStatus" class="flex items-center space-x-2">
+                        <span class="pulse-live w-3 h-3 rounded-full bg-green-500"></span>
+                        <span class="text-green-400">Simulation Active</span>
+                    </div>
+                    <div id="vehicleCount" class="text-slate-300">
+                        Vehicles: <span class="font-bold">0</span>
+                    </div>
+                </div>
+                <div class="flex space-x-4">
+                    <button id="toggleView" class="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600">
+                        Toggle View
+                    </button>
+                    <button id="exportData" class="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-500">
+                        Export Data
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Grid Layout -->
+            <div class="grid grid-cols-12 gap-6">
+                <!-- Platoon Visualization -->
+                <div class="col-span-12 lg:col-span-8 glass-card p-6">
+                    <h3 class="font-bold text-xl mb-4">Live Platoon Visualization</h3>
+                    <div id="platoonVisualization" class="platoon-visualization">
+                        <!-- Vehicle dots will be added here dynamically -->
+                    </div>
+                </div>
+
+                <!-- Key Metrics -->
+                <div class="col-span-12 lg:col-span-4 space-y-6">
+                    <div class="metric-card p-6 rounded-xl">
+                        <h4 class="text-sm text-slate-400">Overall Efficiency</h4>
+                        <div class="flex items-end space-x-2">
+                            <span id="efficiencyScore" class="text-4xl font-bold">--</span>
+                            <span class="text-slate-400">%</span>
+                        </div>
+                        <div class="mt-2 bg-slate-700 rounded-full h-2">
+                            <div id="efficiencyBar" class="efficiency-meter bg-green-500 h-2 rounded-full" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Advanced Charts -->
+                <div class="col-span-12 lg:col-span-6 advanced-chart-container glass-card p-6">
+                    <canvas id="multiMetricChart"></canvas>
+                </div>
+
+                <!-- Vehicle List -->
+                <div class="col-span-12 glass-card p-6">
+                    <h3 class="font-bold text-xl mb-4">Active Vehicles</h3>
+                    <div id="vehicleGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- Vehicle cards will be added here dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Technology Stack Section -->
+        <section id="techStackSection" class="hidden max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+            <div class="text-center mb-12">
+                <h2 class="text-4xl md:text-5xl font-bold text-white" style="font-family: 'Orbitron', sans-serif;">Technology Stack</h2>
+                <p class="text-slate-400 mt-2">The core technologies used to build this application. Click a logo to learn more.</p>
+            </div>
+            
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8 items-center justify-items-center mb-8">
+                <!-- Logos -->
+                <div class="tech-logo-container p-4" data-tech="html">
+                    <svg class="w-20 h-20 text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h18v18H3V3zm16 16V5H5v14h14zM11 13H9v-2h2v2zm3-6H8v2h6V7z"/></svg>
+                </div>
+                <div class="tech-logo-container p-4" data-tech="css">
+                     <svg class="w-20 h-20 text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h18v18H3V3zm16 16V5H5v14h14zm-4-8a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg>
+                </div>
+                <div class="tech-logo-container p-4" data-tech="js">
+                     <svg class="w-20 h-20 text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h18v18H3V3zm16 16V5H5v14h14zM10 15h2v-2h-2v2zm-2-4h2V9H8v2zm6 2h2v-2h-2v2z"/></svg>
+                </div>
+                <div class="tech-logo-container p-4" data-tech="tailwind">
+                     <svg class="w-20 h-20 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 54 33"><path fill="currentColor" d="M13.5 0C6.042 0 0 6.042 0 13.5s6.042 13.5 13.5 13.5c1.655 0 3.23-.306 4.693-.865A13.43 13.43 0 0021.365 27c1.656 0 3.23-.306 4.694-.865A13.43 13.43 0 0029.23 27c1.656 0 3.23-.306 4.694-.865A13.43 13.43 0 0037.1 27c1.656 0 3.23-.306 4.694-.865A13.43 13.43 0 0045.03 27C49.962 27 54 22.962 54 18s-4.038-9-8.97-9c-1.656 0-3.23.306-4.694.865A13.43 13.43 0 0037.1 9c-1.656 0-3.23.306-4.694.865A13.43 13.43 0 0029.23 9c-1.656 0-3.23.306-4.694.865A13.43 13.43 0 0021.365 9c-1.656 0-3.23.306-4.694.865A13.43 13.43 0 0013.5 9 13.5 13.5 0 0013.5 0z"/></svg>
+                </div>
+                <div class="tech-logo-container p-4" data-tech="papaparse">
+                     <svg class="w-20 h-20 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                </div>
+                <div class="tech-logo-container p-4" data-tech="chartjs">
+                     <svg class="w-20 h-20 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" /></svg>
+                </div>
+            </div>
+
+            <!-- Descriptions -->
+            <div id="techDescriptionContainer">
+                <div id="html-desc" class="tech-desc glass-card rounded-lg p-6"><h3 class="font-bold text-lg text-red-400 mb-2">HTML5</h3><p class="text-slate-300">The backbone of the application. HTML provides the fundamental structure for all content, from the main hero section and header to the dynamically generated dashboard cards and data tables. We used semantic HTML5 tags to ensure the content is well-organized and accessible.</p></div>
+                <div id="css-desc" class="tech-desc glass-card rounded-lg p-6"><h3 class="font-bold text-lg text-red-400 mb-2">CSS3</h3><p class="text-slate-300">CSS is responsible for the entire visual aesthetic. We used it to implement the dark F1 theme, create the glowing text and glassmorphism effects, and design all the custom animations, including the intro flicker, the pop-up effect for the dashboard, and the animated speedometer on the upload section.</p></div>
+                <div id="js-desc" class="tech-desc glass-card rounded-lg p-6"><h3 class="font-bold text-lg text-red-400 mb-2">JavaScript</h3><p class="text-slate-300">The engine of the application. JavaScript handles all user interactions, from the initial "click to start" sequence to showing/hiding different sections. Most importantly, it orchestrates the file parsing and data visualization, acting as the bridge between Papa Parse and Chart.js to create a fully dynamic and interactive experience.</p></div>
+                <div id="tailwind-desc" class="tech-desc glass-card rounded-lg p-6"><h3 class="font-bold text-lg text-red-400 mb-2">Tailwind CSS</h3><p class="text-slate-300">A utility-first CSS framework that allowed us to build this custom design rapidly without writing extensive custom CSS. We used Tailwind's pre-built classes for layout (grids, flexbox), spacing, colors, and responsive design, ensuring the dashboard looks great on any device, from a mobile phone to a large desktop monitor.</p></div>
+                <div id="papaparse-desc" class="tech-desc glass-card rounded-lg p-6"><h3 class="font-bold text-lg text-red-400 mb-2">Papa Parse</h3><p class="text-slate-300">A powerful in-browser CSV parsing library. When a user uploads a CSV file, Papa Parse is the tool that reads it, automatically detects data types, and converts the rows and columns into a clean JavaScript object array. This makes it incredibly easy to work with the data for calculations and charting, without needing any server-side processing.</p></div>
+                <div id="chartjs-desc" class="tech-desc glass-card rounded-lg p-6"><h3 class="font-bold text-lg text-red-400 mb-2">Chart.js</h3><p class="text-slate-300">A flexible and popular charting library for JavaScript. We used Chart.js to transform the parsed CSV data into meaningful, interactive visualizations. It powers the line, doughnut, and scatter charts on the dashboard, allowing for a clear and immediate understanding of the fleet's performance data.</p></div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // DOM Elements
+        const startOverlay = document.getElementById('startOverlay');
+        const backgroundAudio = document.getElementById('backgroundAudio');
+        const header = document.querySelector('header');
+        const homeBtn = document.getElementById('homeBtn');
+        const heroSection = document.getElementById('heroSection');
+        const dashboardBtn = document.getElementById('dashboardBtn');
+        const techStackBtn = document.getElementById('techStackBtn');
+        const dashboardApp = document.getElementById('dashboardApp');
+        const techStackSection = document.getElementById('techStackSection');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const techLogoContainers = document.querySelectorAll('.tech-logo-container');
+        
+        // --- App State ---
+        let charts = {};
+        let allData = []; // Array to store all received data rows
+        let socket;
+        let dataReceived = false; // Track if we've received any data
+
+        // --- Dark Theme for Chart.js ---
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.borderColor = 'rgba(51, 65, 85, 0.5)';
+        
+        // --- Event Listener to Start Experience ---
+        startOverlay.addEventListener('click', () => {
+            startOverlay.classList.add('opacity-0');
+            backgroundAudio.volume = 0.3;
+            backgroundAudio.play().catch(e => console.warn("Audio playback was interrupted:", e));
+            header.classList.remove('opacity-0');
+            heroSection.classList.remove('opacity-0');
+            setTimeout(() => { startOverlay.style.display = 'none'; }, 500);
+        }, { once: true });
+
+        // --- UI Navigation Logic ---
+        function showSection(sectionToShow) {
+            [heroSection, dashboardApp, techStackSection].forEach(section => {
+                if (section === sectionToShow) {
+                    section.classList.remove('hidden');
+                    section.classList.add('animate-fade-in-up');
+                } else {
+                    section.classList.add('hidden');
+                    section.classList.remove('animate-fade-in-up');
+                }
+            });
+            connectionStatus.classList.toggle('hidden', sectionToShow !== dashboardApp);
+        }
+        
+        homeBtn.addEventListener('click', () => showSection(heroSection));
+        dashboardBtn.addEventListener('click', () => {
+            showSection(dashboardApp);
+            if (!socket || socket.readyState === WebSocket.CLOSED) {
+                connectWebSocket();
+            }
+        });
+        techStackBtn.addEventListener('click', () => showSection(techStackSection));
+
+        // --- WebSocket Connection Logic ---
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.hostname}:8080`;
+            
+            console.log('[Client] Connecting to WebSocket:', wsUrl);
+            
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                console.log('[Client] WebSocket connected');
+                updateConnectionStatus('Connected', 'bg-green-500', true);
+            };
+            
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('[Client] Received data:', data);
+                    
+                    if (data.type === 'vehicleData') {
+                        data.vehicles.forEach(vehicle => {
+                            updateDashboard(vehicle);
+                        });
+                    }
+                } catch (error) {
+                    console.error('[Client] Error processing message:', error);
+                }
+            };
+            
+            socket.onclose = () => {
+                console.log('[Client] WebSocket disconnected');
+                updateConnectionStatus('Disconnected', 'bg-red-500', false);
+                
+                // Attempt to reconnect after 5 seconds
+                setTimeout(connectWebSocket, 5000);
+            };
+            
+            socket.onerror = (error) => {
+                console.error('[Client] WebSocket error:', error);
+                updateConnectionStatus('Error', 'bg-red-500', false);
+            };
+        }
+
+        // Add test data to verify the dashboard works
+        function addTestData() {
+            console.log('[Client] Adding test data to verify dashboard functionality');
+            const testData = [
+                {
+                    vehicle_id: 'test_1',
+                    speed: 65.5,
+                    fuel_consumption: 8.2,
+                    co2_emission: 189.5,
+                    platooning_status: 'on',
+                    timestamp: new Date().toISOString()
+                },
+                {
+                    vehicle_id: 'test_2',
+                    speed: 72.1,
+                    fuel_consumption: 9.1,
+                    co2_emission: 210.3,
+                    platooning_status: 'off',
+                    timestamp: new Date().toISOString()
+                }
+            ];
+            
+            // Only add test data if no real data has been received after 10 seconds
+            setTimeout(() => {
+                if (!dataReceived) {
+                    console.log('[Client] No real data received, using test data');
+                    testData.forEach(data => {
+                        allData.push(data);
+                        updateDashboard(data);
+                    });
+                }
+            }, 10000);
+        }
+
+        function updateConnectionStatus(text, color, isLive) {
+            statusText.textContent = text;
+            statusIndicator.className = `w-3 h-3 rounded-full ${color}`;
+            if(isLive) statusIndicator.classList.add('pulse-live');
+            else statusIndicator.classList.remove('pulse-live');
+        }
+
+        // --- Real-time Dashboard Updates ---
+        function updateDashboard(newDataRow) {
+            console.log('[Client] Updating dashboard with:', newDataRow);
+            
+            // Use the exact column names from the server
+            const colMap = {
+                speed: 'speed',
+                fuel: 'fuel_consumption',
+                platoon: 'platooning_status',
+                co2: 'co2_emission',
+            };
+            
+            updateKPIs(allData, colMap);
+            updateCharts(newDataRow, colMap);
+            updateTable(newDataRow);
+        }
+
+        function updateKPIs(data, colMap) {
+            console.log('[Client] Updating KPIs with data length:', data.length);
+            
+            if (data.length === 0) {
+                console.log('[Client] No data available for KPIs');
+                return;
+            }
+            
+            const totalRecords = data.length;
+            let totalSpeed = 0;
+            let totalFuel = 0;
+            let platoonCount = 0;
+            
+            // Calculate totals with better error handling
+            data.forEach(record => {
+                const speed = parseFloat(record[colMap.speed]) || 0;
+                const fuel = parseFloat(record[colMap.fuel]) || 0;
+                const platooning = record[colMap.platoon];
+                
+                totalSpeed += speed;
+                totalFuel += fuel;
+                
+                if (platooning === 'on' || platooning === true || platooning === 1) {
+                    platoonCount++;
+                }
+            });
+            
+            const avgSpeed = totalSpeed / totalRecords;
+            const avgFuel = totalFuel / totalRecords;
+            const platoonPercentage = (platoonCount / totalRecords) * 100;
+            
+            console.log('[Client] Calculated KPIs:', {
+                avgSpeed: avgSpeed.toFixed(1),
+                avgFuel: avgFuel.toFixed(2),
+                platoonPercentage: platoonPercentage.toFixed(0)
+            });
+            
+            // Update the display
+            const avgSpeedEl = document.getElementById('avgSpeed');
+            const avgFuelEl = document.getElementById('avgFuel');
+            const platoonRatioEl = document.getElementById('platoonRatio');
+            
+            if (avgSpeedEl) avgSpeedEl.textContent = `${avgSpeed.toFixed(1)} km/h`;
+            if (avgFuelEl) avgFuelEl.textContent = `${avgFuel.toFixed(2)} L/100km`;
+            if (platoonRatioEl) platoonRatioEl.textContent = `${platoonPercentage.toFixed(0)}%`;
+        }
+
+        function updateCharts(newDataRow, colMap) {
+            console.log('[Client] Updating charts with:', newDataRow);
+            
+            if (!charts.speedFuelChart) {
+                console.log('[Client] Charts not initialized yet');
+                return;
+            }
+            
+            // Add new label (use timestamp or data count)
+            const newLabel = newDataRow.timestamp 
+                ? new Date(newDataRow.timestamp).toLocaleTimeString()
+                : new Date().toLocaleTimeString();
+            
+            charts.speedFuelChart.data.labels.push(newLabel);
+            
+            // Add new data points with better error handling
+            const speed = parseFloat(newDataRow[colMap.speed]) || 0;
+            const fuel = parseFloat(newDataRow[colMap.fuel]) || 0;
+            
+            charts.speedFuelChart.data.datasets[0].data.push(speed);
+            charts.speedFuelChart.data.datasets[1].data.push(fuel);
+
+            // Keep the chart from getting too crowded
+            if(charts.speedFuelChart.data.labels.length > 20) {
+                charts.speedFuelChart.data.labels.shift();
+                charts.speedFuelChart.data.datasets.forEach(dataset => dataset.data.shift());
+            }
+            charts.speedFuelChart.update('none');
+
+            // Update Doughnut Chart
+            const platoonOn = allData.filter(r => {
+                const status = r[colMap.platoon];
+                return status === 'on' || status === true || status === 1;
+            }).length;
+            
+            const platoonOff = allData.length - platoonOn;
+            charts.platooningChart.data.datasets[0].data = [platoonOn, platoonOff];
+            charts.platooningChart.update('none');
+
+            // Update Scatter chart
+            if(charts.co2SpeedChart && newDataRow[colMap.co2] && newDataRow[colMap.speed]) {
+                const co2 = parseFloat(newDataRow[colMap.co2]) || 0;
+                charts.co2SpeedChart.data.datasets[0].data.push({ x: speed, y: co2 });
+                
+                if(charts.co2SpeedChart.data.datasets[0].data.length > 100) {
+                     charts.co2SpeedChart.data.datasets[0].data.shift();
+                }
+                charts.co2SpeedChart.update('none');
+            }
+            
+            console.log('[Client] Charts updated successfully');
+        }
+        
+        function updateTable(newDataRow) {
+            const tableBody = document.getElementById('tableBody');
+            if (!tableBody) return;
+            
+            const newRow = document.createElement('tr');
+            newRow.className = 'border-b border-slate-800 hover:bg-slate-700/50';
+            
+            // Create table row with the expected columns
+            const columns = ['vehicle_id', 'speed', 'fuel_consumption', 'platooning_status', 'co2_emission'];
+            let rowHTML = '';
+            
+            columns.forEach(col => {
+                let value = newDataRow[col];
+                if (typeof value === 'number') {
+                    value = value.toFixed(2);
+                } else if (value === undefined || value === null) {
+                    value = 'N/A';
+                }
+                rowHTML += `<td class="p-3 whitespace-nowrap text-slate-400">${value}</td>`;
+            });
+            
+            newRow.innerHTML = rowHTML;
+            tableBody.prepend(newRow);
+            
+            // Keep the table from getting too long
+            if(tableBody.rows.length > 50) {
+                tableBody.deleteRow(-1);
+            }
+        }
+
+        // --- Initial Dashboard Setup ---
+        function initializeCharts() {
+            console.log('[Client] Initializing charts...');
+            
+            const sharedOptions = { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                animation: { duration: 0 },
+                plugins: { 
+                    legend: { 
+                        labels: { color: '#e2e8f0' } 
+                    } 
+                },
+                scales: {
+                    x: { 
+                        ticks: { color: '#e2e8f0' },
+                        grid: { color: 'rgba(51, 65, 85, 0.5)' }
+                    },
+                    y: { 
+                        ticks: { color: '#e2e8f0' },
+                        grid: { color: 'rgba(51, 65, 85, 0.5)' }
+                    }
+                }
+            };
+            
+            // Speed and Fuel Chart
+            const ctx1 = document.getElementById('speedFuelChart');
+            if (ctx1) {
+                charts.speedFuelChart = new Chart(ctx1, { 
+                    type: 'line', 
+                    data: { 
+                        labels: [], 
+                        datasets: [ 
+                            { 
+                                label: 'Speed (km/h)', 
+                                data: [], 
+                                borderColor: '#38bdf8', 
+                                backgroundColor: 'rgba(56, 189, 248, 0.1)', 
+                                yAxisID: 'y', 
+                                tension: 0.3,
+                                pointRadius: 2
+                            }, 
+                            { 
+                                label: 'Fuel (L/100km)', 
+                                data: [], 
+                                borderColor: '#34d399', 
+                                backgroundColor: 'rgba(52, 211, 153, 0.1)', 
+                                yAxisID: 'y1', 
+                                tension: 0.3,
+                                pointRadius: 2
+                            } 
+                        ] 
+                    }, 
+                    options: { 
+                        ...sharedOptions, 
+                        scales: { 
+                            y: { 
+                                beginAtZero: true, 
+                                position: 'left', 
+                                title: { display: true, text: 'Speed (km/h)', color: '#e2e8f0' },
+                                ticks: { color: '#e2e8f0' },
+                                grid: { color: 'rgba(51, 65, 85, 0.5)' }
+                            }, 
+                            y1: { 
+                                beginAtZero: true, 
+                                position: 'right', 
+                                title: { display: true, text: 'Fuel (L/100km)', color: '#e2e8f0' }, 
+                                grid: { drawOnChartArea: false },
+                                ticks: { color: '#e2e8f0' }
+                            },
+                            x: {
+                                ticks: { color: '#e2e8f0', maxTicksLimit: 10 },
+                                grid: { color: 'rgba(51, 65, 85, 0.5)' }
+                            }
+                        } 
+                    } 
+                });
+                console.log('[Client] Speed/Fuel chart initialized');
+            }
+            
+            // Platooning Chart
+            const ctx2 = document.getElementById('platooningChart');
+            if (ctx2) {
+                charts.platooningChart = new Chart(ctx2, { 
+                    type: 'doughnut', 
+                    data: { 
+                        labels: ['Platooning', 'Solo'], 
+                        datasets: [{ 
+                            data: [0, 1], // Start with at least some data to show the chart
+                            backgroundColor: ['#f59e0b', '#475569'], 
+                            borderColor: '#0f172a',
+                            borderWidth: 2,
+                            hoverOffset: 4
+                        }] 
+                    }, 
+                    options: {
+                        ...sharedOptions,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: { color: '#e2e8f0', padding: 20 }
+                            }
+                        }
+                    }
+                });
+                console.log('[Client] Platooning chart initialized');
+            }
+            
+            // CO2 vs Speed Chart
+            const ctx3 = document.getElementById('co2SpeedChart');
+            if (ctx3) {
+                charts.co2SpeedChart = new Chart(ctx3, { 
+                    type: 'scatter', 
+                    data: { 
+                        datasets: [{ 
+                            label: 'CO2 vs Speed', 
+                            data: [], 
+                            backgroundColor: 'rgba(244, 63, 94, 0.6)',
+                            borderColor: 'rgba(244, 63, 94, 0.8)',
+                            pointRadius: 3
+                        }] 
+                    }, 
+                    options: { 
+                        ...sharedOptions, 
+                        scales: { 
+                            x: { 
+                                type: 'linear', 
+                                position: 'bottom', 
+                                title: { display: true, text: 'Speed (km/h)', color: '#e2e8f0' },
+                                ticks: { color: '#e2e8f0' },
+                                grid: { color: 'rgba(51, 65, 85, 0.5)' }
+                            }, 
+                            y: { 
+                                title: { display: true, text: 'CO2 Emissions (g/km)', color: '#e2e8f0' },
+                                ticks: { color: '#e2e8f0' },
+                                grid: { color: 'rgba(51, 65, 85, 0.5)' }
+                            } 
+                        } 
+                    } 
+                });
+                console.log('[Client] CO2 chart initialized');
+            }
+            
+            // Set up table header
+            const headers = ['Vehicle ID', 'Speed (km/h)', 'Fuel (L/100km)', 'Platooning', 'CO2 (g/km)'];
+            const tableHeader = document.getElementById('tableHeader');
+            if (tableHeader) {
+                tableHeader.innerHTML = `<tr>${headers.map(h => `<th class="p-3 text-left font-semibold text-slate-300 uppercase tracking-wider text-xs">${h}</th>`).join('')}</tr>`;
+                console.log('[Client] Table header initialized');
+            }
+            
+            console.log('[Client] All charts initialized successfully');
+        }
+
+        function createDashboardContent() {
+            console.log('[Client] Creating dashboard content...');
+            dashboardApp.innerHTML = `
+                <div class="mb-4 p-4 bg-blue-900/20 rounded-lg border border-blue-500/30">
+                    <p class="text-blue-200 text-sm">
+                        <strong>Debug Info:</strong> WebSocket connected. Waiting for vehicle data from CARLA simulation...
+                        <span id="debugInfo" class="block mt-2 text-xs text-blue-300">Data points received: 0</span>
+                    </p>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-6 mb-8">
+                    <div class="glass-card p-4 flex items-center space-x-4">
+                        <div class="bg-sky-500/20 p-3 rounded-full">
+                            <svg class="w-6 h-6 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-400">Average Speed</p>
+                            <p id="avgSpeed" class="text-2xl font-bold text-white">-- km/h</p>
+                        </div>
+                    </div>
+                    <div class="glass-card p-4 flex items-center space-x-4">
+                        <div class="bg-emerald-500/20 p-3 rounded-full">
+                            <svg class="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.657 7.343A8 8 0 0117.657 18.657z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.879 16.121A5 5 0 0014.142 11.858"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-400">Avg. Fuel Use</p>
+                            <p id="avgFuel" class="text-2xl font-bold text-white">-- L/100km</p>
+                        </div>
+                    </div>
+                    <div class="glass-card p-4 flex items-center space-x-4">
+                        <div class="bg-amber-500/20 p-3 rounded-full">
+                            <svg class="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-400">Platooning Ratio</p>
+                            <p id="platoonRatio" class="text-2xl font-bold text-white">--%</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <div class="glass-card p-6 rounded-xl">
+                        <h3 class="font-semibold mb-4 text-slate-200">Real-time Speed & Fuel</h3>
+                        <div style="height:300px;">
+                            <canvas id="speedFuelChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="glass-card p-6 rounded-xl">
+                        <h3 class="font-semibold mb-4 text-slate-200">Platooning Status</h3>
+                        <div style="height:300px; display: flex; justify-content: center; align-items: center;">
+                            <canvas id="platooningChart" style="max-width: 250px;"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 gap-6 mb-8">
+                    <div class="glass-card p-6 rounded-xl relative">
+                        <h3 class="font-semibold mb-4 text-slate-200">CO2 Emissions vs. Speed</h3>
+                        <div style="height:300px;">
+                            <canvas id="co2SpeedChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="glass-card p-6 rounded-xl">
+                    <h3 class="font-semibold mb-4 text-slate-200">Live Data Log</h3>
+                    <div class="overflow-auto max-h-96">
+                        <table id="dataTable" class="min-w-full text-sm">
+                            <thead id="tableHeader" class="bg-slate-800/50"></thead>
+                            <tbody id="tableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            
+            // Update debug info periodically
+            setInterval(() => {
+                const debugInfo = document.getElementById('debugInfo');
+                if (debugInfo) {
+                    debugInfo.textContent = `Data points received: ${allData.length} | Last update: ${new Date().toLocaleTimeString()}`;
+                }
+            }, 1000);
+            
+            console.log('[Client] Dashboard content created');
+        }
+
+        // Tech Stack Logic from previous version
+        techLogoContainers.forEach(container => {
+            container.addEventListener('click', () => {
+                const tech = container.dataset.tech;
+                const descId = `${tech}-desc`;
+                const descElement = document.getElementById(descId);
+                const isAlreadyVisible = descElement.classList.contains('visible');
+                document.querySelectorAll('.tech-desc').forEach(d => d.classList.remove('visible'));
+                techLogoContainers.forEach(c => c.classList.remove('active'));
+                if (!isAlreadyVisible) {
+                    descElement.classList.add('visible');
+                    container.classList.add('active');
+                }
+            });
+        });
+
+        // --- Enhanced Dashboard Logic ---
+        function updateDashboard(data) {
+            // Update vehicle visualization
+            updatePlatoonVisualization(data);
+            
+            // Update efficiency metrics
+            updateEfficiencyMetrics(data);
+            
+            // Update vehicle cards
+            updateVehicleCards(data);
+            
+            // Update advanced charts
+            updateAdvancedCharts(data);
+        }
+
+        function updatePlatoonVisualization(data) {
+            const container = document.getElementById('platoonVisualization');
+            const vehicleId = data.vehicle_id;
+            
+            let dot = document.getElementById(`vehicle-${vehicleId}`);
+            if (!dot) {
+                dot = document.createElement('div');
+                dot.id = `vehicle-${vehicleId}`;
+                dot.className = 'vehicle-dot';
+                container.appendChild(dot);
+            }
+            
+            // Position based on lane and relative position
+            const laneHeight = container.clientHeight / 3;
+            const lane = data.current_lane || 1;
+            const yPos = (lane - 1) * laneHeight + laneHeight/2;
+            
+            // Calculate x position based on relative position in platoon
+            const xPos = (data.position_in_platoon || 0) * 50 + 50;
+            
+            dot.style.top = `${yPos}px`;
+            dot.style.left = `${xPos}px`;
+            dot.style.backgroundColor = data.platooning_status === 'on' ? '#22c55e' : '#64748b';
+        }
+
+        function updateEfficiencyMetrics(data) {
+            const score = data.efficiency_score || 0;
+            document.getElementById('efficiencyScore').textContent = score.toFixed(1);
+            document.getElementById('efficiencyBar').style.width = `${score}%`;
+        }
+
+        function updateVehicleCards(data) {
+            const grid = document.getElementById('vehicleGrid');
+            const vehicleId = data.vehicle_id;
+            
+            let card = document.getElementById(`card-${vehicleId}`);
+            if (!card) {
+                card = document.createElement('div');
+                card.id = `card-${vehicleId}`;
+                card.className = 'vehicle-card glass-card p-4';
+                grid.appendChild(card);
+            }
+            
+            card.innerHTML = `
+                <div class="flex justify-between items-start mb-2">
+                    <h4 class="font-bold">${vehicleId}</h4>
+                    <span class="px-2 py-1 rounded-full text-xs ${
+                        data.platooning_status === 'on' 
+                        ? 'bg-green-500/20 text-green-400' 
+                        : 'bg-slate-500/20 text-slate-400'
+                    }">
+                        ${data.platooning_status === 'on' ? 'Platooning' : 'Solo'}
+                    </span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-sm">
+                    <div>Speed: ${data.speed.toFixed(1)} km/h</div>
+                    <div>Fuel: ${data.fuel_consumption.toFixed(2)} L/100km</div>
+                    <div>CO₂: ${data.co2_emission.toFixed(1)} g/km</div>
+                    <div>Score: ${data.efficiency_score.toFixed(1)}%</div>
+                </div>
+            `;
+        }
+
+        function updateAdvancedCharts(data) {
+            // Update existing charts with new data points
+            // Implementation depends on your specific chart requirements
+        }
+        
+        // Add WebSocket connection handling
+        // Add data processing logic
+        // Add export functionality
+    </script>
+</body>
+</html>
+            card.innerHTML = `
+                <div class="flex justify-between items-start mb-2">
+                    <h4 class="font-bold">${vehicleId}</h4>
+                    <span class="px-2 py-1 rounded-full text-xs ${
+                        data.platooning_status === 'on' 
+                        ? 'bg-green-500/20 text-green-400' 
+                        : 'bg-slate-500/20 text-slate-400'
+                    }">
+                        ${data.platooning_status === 'on' ? 'Platooning' : 'Solo'}
+                    </span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-sm">
+                    <div>Speed: ${data.speed.toFixed(1)} km/h</div>
+                    <div>Fuel: ${data.fuel_consumption.toFixed(2)} L/100km</div>
+                    <div>CO₂: ${data.co2_emission.toFixed(1)} g/km</div>
+                    <div>Score: ${data.efficiency_score.toFixed(1)}%</div>
+                </div>
+            `;
+        }
+
+        function updateAdvancedCharts(data) {
+            // Update existing charts with new data points
+            // Implementation depends on your specific chart requirements
+        }
+        
+        // Add WebSocket connection handling
+        // Add data processing logic
+        // Add export functionality
+    </script>
+</body>
+</html>
+
