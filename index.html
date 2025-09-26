@@ -284,7 +284,7 @@
         // --- WebSocket Connection Logic ---
         function connectWebSocket() {
             // Replace with your server's address if not running locally
-            socket = new WebSocket('ws://localhost:8080');
+            socket = new WebSocket('wss://vit-platoon.onrender.com');
 
             socket.onopen = () => {
                 console.log('[Client] WebSocket connection established.');
