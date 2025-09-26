@@ -38,7 +38,8 @@ const server = http.createServer((req, res) => {
     }
 
     // --- Static File Serving for Frontend ---
-    let filePath = path.join(__dirname, 'public', req.url === '/' ? 'index.html' : req.url);
+    // UPDATED: Removed 'public' to serve files from the project's root directory
+    let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
     let extname = String(path.extname(filePath)).toLowerCase();
     let mimeTypes = {
         '.html': 'text/html',
@@ -59,8 +60,8 @@ const server = http.createServer((req, res) => {
     fs.readFile(filePath, (error, content) => {
         if (error) {
             if(error.code == 'ENOENT') {
-                res.writeHead(444, { 'Content-Type': 'text/html' });
-                res.end('<h1>444 Not Found</h1>', 'utf-8');
+                res.writeHead(404, { 'Content-Type': 'text/html' });
+                res.end('<h1>404 Not Found</h1>', 'utf-8');
             } else {
                 res.writeHead(500);
                 res.end('Sorry, check with the site admin for error: '+error.code+' ..\n');
