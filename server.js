@@ -48,7 +48,15 @@ const server = http.createServer((req, res) => {
                             acceleration: parseFloat(vehicle.acceleration) || 0,
                             distance_to_leader: parseFloat(vehicle.distance_to_leader) || 0,
                             efficiency_score: parseFloat(vehicle.efficiency_score) || 0,
-                            current_lane: parseInt(vehicle.current_lane) || 0
+                            current_lane: parseInt(vehicle.current_lane) || 0,
+                            // New detailed metrics
+                            role: vehicle.role || 'solo',
+                            alignment_score: parseFloat(vehicle.alignment_score) || 0,
+                            total_distance: parseFloat(vehicle.total_distance) || 0,
+                            avg_speed: parseFloat(vehicle.avg_speed) || 0,
+                            fuel_savings: parseFloat(vehicle.fuel_savings) || 0,
+                            platoon_id: vehicle.platoon_id || null,
+                            position_in_platoon: parseInt(vehicle.position_in_platoon) || 0
                         };
                         
                         console.log(`[Server] Vehicle ${index + 1} processed:`, JSON.stringify(message, null, 2));
