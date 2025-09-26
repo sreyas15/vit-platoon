@@ -398,72 +398,41 @@
 
         // --- WebSocket Connection Logic ---
         function connectWebSocket() {
-            // Use the correct WebSocket URL for your Render deployment
-            const wsUrl = window.location.protocol === 'https:' 
-                ? `wss://${window.location.host}`
-                : `ws://${window.location.host}`;
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.hostname}:8080`;
             
-            console.log('[Client] Connecting to:', wsUrl);
+            console.log('[Client] Connecting to WebSocket:', wsUrl);
+            
             socket = new WebSocket(wsUrl);
-
+            
             socket.onopen = () => {
-                console.log('[Client] WebSocket connection established.');
-                updateConnectionStatus('Connected - Waiting for data', 'bg-yellow-500', true);
-                // Initialize dashboard only once on connection
-                if (Object.keys(charts).length === 0) {
-                    createDashboardContent();
-                    initializeCharts();
-                    
-                    // Add some test data to verify charts work
-                    addTestData();
-                }
+                console.log('[Client] WebSocket connected');
+                updateConnectionStatus('Connected', 'bg-green-500', true);
             };
-
+            
             socket.onmessage = (event) => {
                 try {
-                    const newDataRow = JSON.parse(event.data);
-                    console.log('[Client] Received raw message:', event.data);
-                    console.log('[Client] Parsed data:', newDataRow);
+                    const data = JSON.parse(event.data);
+                    console.log('[Client] Received data:', data);
                     
-                    // Skip welcome messages
-                    if (newDataRow.type === 'welcome') {
-                        console.log('[Client] Welcome message received');
-                        return;
-                    }
-                    
-                    // Check if this looks like vehicle data
-                    if (newDataRow.vehicle_id || newDataRow.speed !== undefined || newDataRow.fuel_consumption !== undefined) {
-                        console.log('[Client] Processing vehicle data:', newDataRow);
-                        dataReceived = true;
-                        allData.push(newDataRow);
-                        updateConnectionStatus('Live - Receiving Data', 'bg-green-500', true);
-                        updateDashboard(newDataRow);
-                        
-                        // Keep only the last 500 data points to prevent memory issues
-                        if (allData.length > 500) {
-                            allData = allData.slice(-500);
-                        }
-                    } else {
-                        console.log('[Client] Received non-vehicle data:', newDataRow);
+                    if (data.type === 'vehicleData') {
+                        data.vehicles.forEach(vehicle => {
+                            updateDashboard(vehicle);
+                        });
                     }
                 } catch (error) {
-                    console.error('[Client] Error parsing message:', error);
-                    console.error('[Client] Raw message was:', event.data);
+                    console.error('[Client] Error processing message:', error);
                 }
             };
-
+            
             socket.onclose = () => {
-                console.log('[Client] WebSocket connection closed.');
+                console.log('[Client] WebSocket disconnected');
                 updateConnectionStatus('Disconnected', 'bg-red-500', false);
-                // Try to reconnect after 5 seconds
-                setTimeout(() => {
-                    if (dashboardApp && !dashboardApp.classList.contains('hidden')) {
-                        console.log('[Client] Attempting to reconnect...');
-                        connectWebSocket();
-                    }
-                }, 5000);
+                
+                // Attempt to reconnect after 5 seconds
+                setTimeout(connectWebSocket, 5000);
             };
-
+            
             socket.onerror = (error) => {
                 console.error('[Client] WebSocket error:', error);
                 updateConnectionStatus('Error', 'bg-red-500', false);
@@ -976,6 +945,37 @@
                 grid.appendChild(card);
             }
             
+            card.innerHTML = `
+                <div class="flex justify-between items-start mb-2">
+                    <h4 class="font-bold">${vehicleId}</h4>
+                    <span class="px-2 py-1 rounded-full text-xs ${
+                        data.platooning_status === 'on' 
+                        ? 'bg-green-500/20 text-green-400' 
+                        : 'bg-slate-500/20 text-slate-400'
+                    }">
+                        ${data.platooning_status === 'on' ? 'Platooning' : 'Solo'}
+                    </span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-sm">
+                    <div>Speed: ${data.speed.toFixed(1)} km/h</div>
+                    <div>Fuel: ${data.fuel_consumption.toFixed(2)} L/100km</div>
+                    <div>CO₂: ${data.co2_emission.toFixed(1)} g/km</div>
+                    <div>Score: ${data.efficiency_score.toFixed(1)}%</div>
+                </div>
+            `;
+        }
+
+        function updateAdvancedCharts(data) {
+            // Update existing charts with new data points
+            // Implementation depends on your specific chart requirements
+        }
+        
+        // Add WebSocket connection handling
+        // Add data processing logic
+        // Add export functionality
+    </script>
+</body>
+</html>
             card.innerHTML = `
                 <div class="flex justify-between items-start mb-2">
                     <h4 class="font-bold">${vehicleId}</h4>
